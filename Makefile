@@ -1,5 +1,6 @@
 export CGO_ENABLED = 0
 
+GO_DIRECT_DEPS := $(shell go list -f '{{if not (or .Main .Indirect)}}{{.Path}}{{end}}' -m all)
 GO_FLAGS = -trimpath -ldflags="-w -s"
 CURRENT_GIT_TAG := $(shell git describe --tags --exact-match HEAD 2>/dev/null || echo "latest")
 
@@ -8,6 +9,11 @@ CURRENT_GIT_TAG := $(shell git describe --tags --exact-match HEAD 2>/dev/null ||
 help:
 	@echo "Available targets:"
 	@cat $(abspath $(lastword $(MAKEFILE_LIST))) | grep -oP '^[a-zA-Z_-]+(?=:)' | sort | xargs printf "  %s\n"
+
+.PHONY:deps-update
+deps-update:
+	go get -u $(GO_DIRECT_DEPS)
+	go mod tidy
 
 .PHONY: code-check
 code-check:

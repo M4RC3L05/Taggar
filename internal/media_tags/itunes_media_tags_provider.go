@@ -47,7 +47,9 @@ func (i ITunesMediaTagsProvider) FetchMediaTags(term string) (*MediaTags, error)
 		return nil, err
 	}
 
-	defer res.Body.Close()
+	defer func() {
+		_ = res.Body.Close()
+	}()
 
 	data, err := io.ReadAll(res.Body)
 	if err != nil {
