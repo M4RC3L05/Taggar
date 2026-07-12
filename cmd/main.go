@@ -19,6 +19,7 @@ var rootCmd = &cobra.Command{
 	Args:          cobra.ExactArgs(1),
 	SilenceErrors: false,
 	Version:       "0.0.0",
+	SilenceUsage:  true,
 }
 
 func init() {
