@@ -3,7 +3,6 @@ module github.com/m4rc3l05/taggar
 go 1.26.4
 
 require (
-	github.com/Oudwins/zog v0.22.2
 	github.com/blacktop/go-termimg v0.1.26
 	github.com/spf13/cobra v1.10.2
 	go.senan.xyz/taglib v0.13.0

@@ -2,12 +2,10 @@ package edit
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 
-	"github.com/Oudwins/zog"
-	"github.com/Oudwins/zog/pkgs/internals"
-	"github.com/Oudwins/zog/zconst"
 	"github.com/m4rc3l05/taggar/internal"
 	mediatags "github.com/m4rc3l05/taggar/internal/media_tags"
 	"github.com/spf13/cobra"
@@ -30,90 +28,17 @@ type EditFlags struct {
 	DiscCount   *string
 }
 
-var editFlagsSchema = zog.Struct(zog.Shape{
-	"Path": zog.Ptr(
-		zog.String().
-			Min(1).
-			TestFunc(func(val *string, ctx internals.Ctx) bool {
-				if val == nil {
-					return false
-				}
-
-				f, err := os.Stat(*val)
-				if err != nil {
-					return false
-				}
-
-				return f.Mode().IsRegular()
-			}, zog.Message("Invalid filepath"),
-			),
-	).NotNil(),
-	"Provider": zog.Ptr(zog.String().Optional().OneOf([]string{"itunes"})),
-	"Term":     zog.Ptr(zog.String()),
-	"Cover": zog.Ptr(
-		zog.String().
-			TestFunc(func(val *string, ctx internals.Ctx) bool {
-				if val == nil {
-					return false
-				}
-
-				f, err := os.Stat(*val)
-				if err != nil {
-					return false
-				}
-
-				return f.Mode().IsRegular()
-			}, zog.Message("Invalid filepath")),
-	),
-	"Title":       zog.Ptr(zog.String().Optional()),
-	"Artist":      zog.Ptr(zog.String().Optional()),
-	"Album":       zog.Ptr(zog.String().Optional()),
-	"AlbumArtist": zog.Ptr(zog.String().Optional()),
-	"Genre":       zog.Ptr(zog.String().Optional()),
-	"Year":        zog.Ptr(zog.String().Optional()),
-	"Track":       zog.Ptr(zog.String().Optional()),
-	"TrackCount":  zog.Ptr(zog.String().Optional()),
-	"Disc":        zog.Ptr(zog.String().Optional()),
-	"DiscCount":   zog.Ptr(zog.String().Optional()),
-}).Test(zog.Test[any]{
-	Func: func(val any, ctx internals.Ctx) {
-		x := val.(*EditFlags)
-
-		if x.Provider != nil && x.Term == nil {
-			ctx.AddIssue(&internals.ZogIssue{
-				Code:    zconst.IssueCodeRequired,
-				Path:    []string{"Term"},
-				Value:   x.Term,
-				Message: "Terms must be specified if provider is specified",
-			})
-
-			return
+func Set(cmd *cobra.Command, n string, dest *(*string)) error {
+	if cmd.Flags().Changed(n) {
+		path, err := cmd.Flags().GetString(n)
+		if err != nil {
+			return err
 		}
 
-		if x.Provider == nil &&
-			x.Album == nil &&
-			x.AlbumArtist == nil &&
-			x.Artist == nil &&
-			x.Cover == nil &&
-			x.Disc == nil &&
-			x.DiscCount == nil &&
-			x.Genre == nil &&
-			x.Title == nil &&
-			x.Track == nil &&
-			x.TrackCount == nil &&
-			x.Year == nil {
-			ctx.AddIssue(&internals.ZogIssue{
-				Code:    zconst.IssueCodeRequired,
-				Message: "Tags must be specified when no provider is selected",
-			})
+		*dest = &path
+	}
 
-			return
-		}
-	},
-})
-
-func (ef EditFlags) Validate() zog.ZogIssueList {
-	return editFlagsSchema.Validate(&ef)
+	return nil
 }
 
 type cmd struct {
@@ -122,6 +47,7 @@ type cmd struct {
 
 func (c *cmd) Pre(cmd *cobra.Command) error {
 	x := EditFlags{}
+
 	if err := Set(cmd, "path", &x.Path); err != nil {
 		return err
 	}
@@ -167,27 +93,35 @@ func (c *cmd) Pre(cmd *cobra.Command) error {
 		return err
 	}
 
-	if errs := x.Validate(); errs != nil {
-		return errors.New(zog.Issues.Prettify(errs))
-	}
-
 	c.data = x
 
 	return nil
 }
 
 func (c cmd) Run(cmd *cobra.Command) error {
-	m := mediatags.MediaTags{
-		AlbumArtist: c.data.AlbumArtist,
-		Album:       c.data.Album,
-		Title:       c.data.Title,
-		Year:        c.data.Year,
-		Artist:      c.data.Artist,
-		Genre:       c.data.Genre,
-		Track:       c.data.Track,
-		TrackCount:  c.data.TrackCount,
-		Disc:        c.data.Disc,
-		DiscCount:   c.data.DiscCount,
+	m := &mediatags.MediaTags{}
+
+	if c.data.Provider != nil {
+		switch *c.data.Provider {
+		case "itunes":
+			{
+				if c.data.Term == nil {
+					return errors.New("term must be provider for itunes provider")
+				}
+
+				fmt.Println("Fetching metadata from itunes")
+				res, err := mediatags.ITunesMediaTagsProvider{}.FetchMediaTags(*c.data.Term)
+				if err != nil {
+					return err
+				}
+
+				m.CopyFrom(res)
+			}
+		default:
+			{
+				return errors.New("provider not supported")
+			}
+		}
 	}
 
 	if c.data.Cover != nil {
@@ -196,7 +130,9 @@ func (c cmd) Run(cmd *cobra.Command) error {
 			return err
 		}
 
-		defer func() { internal.Must(f.Close()) }()
+		defer func() {
+			_ = f.Close()
+		}()
 
 		data, err := io.ReadAll(f)
 		if err != nil {
@@ -208,25 +144,26 @@ func (c cmd) Run(cmd *cobra.Command) error {
 		}
 	}
 
+	m.CopyFrom(&mediatags.MediaTags{
+		AlbumArtist: c.data.AlbumArtist,
+		Album:       c.data.Album,
+		Title:       c.data.Title,
+		Year:        c.data.Year,
+		Artist:      c.data.Artist,
+		Genre:       c.data.Genre,
+		Track:       c.data.Track,
+		TrackCount:  c.data.TrackCount,
+		Disc:        c.data.Disc,
+		DiscCount:   c.data.DiscCount,
+	})
+
+	fmt.Println("Persisting tags")
 	tags, err := mediatags.TaglibMediaTagsRepository{}.SetMediaTagsFromPath(*c.data.Path, m)
 	if err != nil {
 		return err
 	}
 
 	return mediatags.DisplayMediaTags(*tags)
-}
-
-func Set(cmd *cobra.Command, n string, dest *(*string)) error {
-	if cmd.Flags().Changed(n) {
-		path, err := cmd.Flags().GetString(n)
-		if err != nil {
-			return err
-		}
-
-		*dest = &path
-	}
-
-	return nil
 }
 
 func NewCommand() *cobra.Command {
@@ -245,7 +182,8 @@ func NewCommand() *cobra.Command {
 
 	editCmd.Flags().StringP("path", "p", "", "the path to the audio file to view metadata")
 
-	editCmd.Flags().StringP("provider", "s", "", "the provider to use to prefill metadata")
+	editCmd.Flags().
+		StringP("provider", "s", "", "the provider to use to prefill metadata\navailable providers:\n\t> itunes")
 	editCmd.Flags().
 		StringP("term", "t", "", "the search term the provider will use to fetch metadata")
 
@@ -263,6 +201,7 @@ func NewCommand() *cobra.Command {
 
 	internal.Must(editCmd.MarkFlagRequired("path"))
 	internal.Must(editCmd.MarkFlagFilename("path"))
+	editCmd.MarkFlagsRequiredTogether("provider", "term")
 
 	return editCmd
 }

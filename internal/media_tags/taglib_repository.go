@@ -127,7 +127,7 @@ func (t TaglibMediaTagsRepository) GetMediaTagsFromPath(path string) (*MediaTags
 
 func (t TaglibMediaTagsRepository) SetMediaTagsFromPath(
 	path string,
-	tags MediaTags,
+	tags *MediaTags,
 ) (*MediaTags, error) {
 	props, err := taglib.ReadProperties(path)
 	if err != nil {
