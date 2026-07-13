@@ -20,6 +20,10 @@ type MediaTags struct {
 }
 
 func (m *MediaTags) CopyFrom(mm *MediaTags) {
+	if mm == nil {
+		return
+	}
+
 	if mm.Album != nil {
 		m.Album = mm.Album
 	}

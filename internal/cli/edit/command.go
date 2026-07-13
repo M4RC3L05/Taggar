@@ -3,180 +3,82 @@ package edit
 import (
 	"errors"
 	"fmt"
-	"io"
-	"os"
 
 	"github.com/m4rc3l05/taggar/internal"
 	mediatags "github.com/m4rc3l05/taggar/internal/media_tags"
 	"github.com/spf13/cobra"
 )
 
-type EditFlags struct {
-	Path        *string
-	Provider    *string
-	Term        *string
-	Cover       *string
-	Title       *string
-	Artist      *string
-	Album       *string
-	AlbumArtist *string
-	Genre       *string
-	Year        *string
-	Track       *string
-	TrackCount  *string
-	Disc        *string
-	DiscCount   *string
-}
-
-func Set(cmd *cobra.Command, n string, dest *(*string)) error {
-	if cmd.Flags().Changed(n) {
-		path, err := cmd.Flags().GetString(n)
-		if err != nil {
-			return err
-		}
-
-		*dest = &path
-	}
-
-	return nil
-}
-
-type cmd struct {
-	data EditFlags
-}
-
-func (c *cmd) Pre(cmd *cobra.Command) error {
-	x := EditFlags{}
-
-	if err := Set(cmd, "path", &x.Path); err != nil {
-		return err
-	}
-
-	if err := Set(cmd, "provider", &x.Provider); err != nil {
-		return err
-	}
-	if err := Set(cmd, "term", &x.Term); err != nil {
-		return err
-	}
-
-	if err := Set(cmd, "cover", &x.Cover); err != nil {
-		return err
-	}
-	if err := Set(cmd, "title", &x.Title); err != nil {
-		return err
-	}
-	if err := Set(cmd, "artist", &x.Artist); err != nil {
-		return err
-	}
-	if err := Set(cmd, "album", &x.Album); err != nil {
-		return err
-	}
-	if err := Set(cmd, "albumArtist", &x.AlbumArtist); err != nil {
-		return err
-	}
-	if err := Set(cmd, "genre", &x.Genre); err != nil {
-		return err
-	}
-	if err := Set(cmd, "year", &x.Year); err != nil {
-		return err
-	}
-	if err := Set(cmd, "track", &x.Track); err != nil {
-		return err
-	}
-	if err := Set(cmd, "trackCount", &x.TrackCount); err != nil {
-		return err
-	}
-	if err := Set(cmd, "dist", &x.Disc); err != nil {
-		return err
-	}
-	if err := Set(cmd, "distCount", &x.DiscCount); err != nil {
-		return err
-	}
-
-	c.data = x
-
-	return nil
-}
-
-func (c cmd) Run(cmd *cobra.Command) error {
-	m := &mediatags.MediaTags{}
-
-	if c.data.Provider != nil {
-		switch *c.data.Provider {
-		case "itunes":
-			{
-				if c.data.Term == nil {
-					return errors.New("term must be provider for itunes provider")
-				}
-
-				fmt.Println("Fetching metadata from itunes")
-				res, err := mediatags.ITunesMediaTagsProvider{}.FetchMediaTags(*c.data.Term)
-				if err != nil {
-					return err
-				}
-
-				m.CopyFrom(res)
-			}
-		default:
-			{
-				return errors.New("provider not supported")
-			}
-		}
-	}
-
-	if c.data.Cover != nil {
-		f, err := os.Open(*c.data.Cover)
-		if err != nil {
-			return err
-		}
-
-		defer func() {
-			_ = f.Close()
-		}()
-
-		data, err := io.ReadAll(f)
-		if err != nil {
-			return err
-		}
-
-		m.Cover = &mediatags.MediaTagsCover{
-			Data: data,
-		}
-	}
-
-	m.CopyFrom(&mediatags.MediaTags{
-		AlbumArtist: c.data.AlbumArtist,
-		Album:       c.data.Album,
-		Title:       c.data.Title,
-		Year:        c.data.Year,
-		Artist:      c.data.Artist,
-		Genre:       c.data.Genre,
-		Track:       c.data.Track,
-		TrackCount:  c.data.TrackCount,
-		Disc:        c.data.Disc,
-		DiscCount:   c.data.DiscCount,
-	})
-
-	fmt.Println("Persisting tags")
-	tags, err := mediatags.TaglibMediaTagsRepository{}.SetMediaTagsFromPath(*c.data.Path, m)
+func getFlag(cmd *cobra.Command, name string) (string, error) {
+	val, err := cmd.Flags().GetString(name)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return mediatags.DisplayMediaTags(*tags)
+	return val, nil
 }
 
 func NewCommand() *cobra.Command {
-	c := cmd{}
 	editCmd := &cobra.Command{
 		Use:   "edit",
 		Short: "Edit audio tags",
 		Args:  cobra.NoArgs,
-		PreRunE: func(cmd *cobra.Command, args []string) error {
-			return c.Pre(cmd)
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.Run(cmd)
+			var m *mediatags.MediaTags
+			path, err := getFlag(cmd, "path")
+			if err != nil {
+				return err
+			}
+
+			provider, err := getFlag(cmd, "provider")
+			if err != nil {
+				return err
+			}
+
+			if cmd.Flags().Changed("provider") {
+				term, err := getFlag(cmd, "term")
+				if err != nil {
+					return err
+				}
+
+				switch provider {
+				case "itunes":
+					{
+						fmt.Println("Fetching metadata from itunes")
+						res, err := mediatags.ITunesMediaTagsProvider{Id: term}.FetchMediaTags()
+						if err != nil {
+							return err
+						}
+
+						m = res
+					}
+				default:
+					{
+						return errors.New("provider not supported")
+					}
+				}
+			}
+
+			res, err := mediatags.CobraCmdMediaTagsProvider{Cmd: cmd}.FetchMediaTags()
+
+			// If setting tags manually (not via a provider) return the error
+			if err != nil && !cmd.Flags().Changed("provider") {
+				return err
+			}
+
+			if m != nil {
+				m.CopyFrom(res)
+			} else {
+				m = res
+			}
+
+			fmt.Println("Persisting tags")
+			tags, err := mediatags.TaglibMediaTagsRepository{}.SetMediaTagsFromPath(path, m)
+			if err != nil {
+				return err
+			}
+
+			return mediatags.DisplayMediaTags(*tags)
 		},
 	}
 

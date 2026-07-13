@@ -29,7 +29,9 @@ type AppleMusicResult struct {
 	TrackNumber          *int       `json:"trackNumber,omitempty"`
 }
 
-type ITunesMediaTagsProvider struct{}
+type ITunesMediaTagsProvider struct {
+	Id string
+}
 
 var _ IProvider = ITunesMediaTagsProvider{}
 
@@ -41,8 +43,8 @@ func IntPtrToStringPtr(pi *int) *string {
 	return new(strconv.Itoa(*pi))
 }
 
-func (i ITunesMediaTagsProvider) FetchMediaTags(term string) (*MediaTags, error) {
-	res, err := http.Get(fmt.Sprintf("https://itunes.apple.com/lookup?id=%s", term))
+func (i ITunesMediaTagsProvider) FetchMediaTags() (*MediaTags, error) {
+	res, err := http.Get(fmt.Sprintf("https://itunes.apple.com/lookup?id=%s", i.Id))
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +65,7 @@ func (i ITunesMediaTagsProvider) FetchMediaTags(term string) (*MediaTags, error)
 	}
 
 	if len(x.Results) <= 0 {
-		return nil, fmt.Errorf("could not find tags for \"%s\"", term)
+		return nil, fmt.Errorf("could not find tags for \"%s\"", i.Id)
 	}
 
 	match := x.Results[0]

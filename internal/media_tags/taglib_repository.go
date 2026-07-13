@@ -1,6 +1,7 @@
 package mediatags
 
 import (
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -129,6 +130,11 @@ func (t TaglibMediaTagsRepository) SetMediaTagsFromPath(
 	path string,
 	tags *MediaTags,
 ) (*MediaTags, error) {
+	if tags == nil {
+		fmt.Println("No tags to set")
+		return t.GetMediaTagsFromPath(path)
+	}
+
 	props, err := taglib.ReadProperties(path)
 	if err != nil {
 		return nil, err
