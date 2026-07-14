@@ -1,0 +1,58 @@
+version: 2
+
+project_name: taggar
+report_sizes: true
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/main.go
+    binary: taggar
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - arm64
+      - amd64
+      - "386"
+    flags:
+      -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "{{ .ArtifactName }}.{{ .Algorithm }}"
+  split: true
+
+release:
+  github:
+    owner: m4rc3l05
+    name: taggar
+
+homebrew_casks:
+  - repository:
+      owner: m4rc3l05
+      name: homebrew-tap
+      # token: "{{ .Env.GH_PAT }}"
+    homepage: https://github.com/M4RC3L05/taggar
+    description: Media tagging viewer & editor 
+    license: MIT
+    directory: Formula
